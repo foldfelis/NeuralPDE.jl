@@ -66,10 +66,22 @@ domains = vcat(
 
 @named pde_system = PDESystem(eq,bcs,domains,vcat([t,x], a_vars),[u(t, x, a_vars...)])
 
+relu(x) = ifelse(x<0, zero(x), x)  # faster than max(zero(x), x), still preserves NaN
+
+relu(z::Complex) = Complex(relu(real(z)), relu(imag(z)))
+
 function run_pino()
-    model = FourierNeuralOperator(ch = (2, 64, 64, 64, 64, 64, 128, 1),
-                                  modes = (16,),
-                                  σ = gelu)
+    Transform = FourierTransform
+    σ = PINO.relu
+    model = Chain(Dense(2+n, 32, σ),
+                  x -> reshape(x, 32, :, 1),
+                  OperatorKernel(32=>32, (16, ), Transform, σ),
+                  OperatorKernel(32=>32, (16, ), Transform, σ),
+                  OperatorKernel(32=>32, (16, ), Transform, σ),
+                  OperatorKernel(32=>32, (16, ), Transform, σ),
+                  x -> reshape(x, 32, :),
+                  Dense(32, 64, σ),
+                  Dense(64, 1),)
     strategy_ = StochasticTraining(128, 32)
 
     initθ = DiffEqFlux.initial_params(model)
